@@ -1,0 +1,219 @@
+#!/bin/sh
+usage() {
+	echo "usage: flow init [-f] <url> <mail> [<folderName>]"
+}
+
+parse_args() {
+	# parse options
+	FLAGS "$@" || exit $?
+	eval set -- "${FLAGS_ARGV}"
+    URL=$1
+    MAIL=$2
+    FOLDER_NAME=$3
+}
+
+require_url_arg() {
+	if [ "$URL" = "" ]; then
+		warn "Missing argument <url>"
+		usage
+		exit 1
+	fi
+}
+
+init(){
+
+    userName=`echo $URL | awk -F '@' '{print $1}' | awk -F '//' '{print $2}'`;
+    host=`echo $URL | awk -F '@' '{print $2}' | awk -F ':' '{print $1}' | awk -F '/' '{print $1}'`;
+    userEmail=$mail
+
+    if [ -z $FOLDER_NAME ]; then
+        FOLDER_NAME=`echo $URL | awk -F/ '{print $NF}' | sed -e 's/.git$//'`;
+    fi
+
+}
+
+gerrit_has_conifged(){
+    local userName=$(git config --get user.name)
+    local userEmail=$(git config --get user.email)
+    [ "$userName" != "" ] && [ "$userEmail" != "" ] && [ -f "$DOT_GIT_DIR/hooks/commit-msg" ]
+}
+
+flow_is_initialized(){
+  gerrit_has_conifged    && \
+    gitflow_is_initialized
+}
+
+# Default entry when no SUBACTION is given
+cmd_default() {
+	DEFINE_boolean force false 'force setting of gitflow branches, even if already configured' f
+	parse_args "$@"
+	
+    init
+
+    if [ -z "$userName" -o -z "$host" -o -z "$userEmail" ]; then
+        warn "The parmeter is '$@', format is right? Please check it"
+        usage
+        exit 1;
+    fi    
+
+	if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        git_do clone $URL $FOLDER_NAME 
+        if [ $? -ne 0 ]; then
+            echo
+            warn "Flow init failed."
+            echo
+            exit 1;
+        fi        
+        cd ${FOLDER_NAME}
+	else
+		# assure that we are not working in a repo with local changes
+		git_repo_is_headless || require_clean_working_tree
+        git remote set-url origin $URL     
+	fi
+
+	export DOT_GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+
+	# running git flow init on an already initialized repo is fine
+	if flow_is_initialized && ! flag force; then
+		warn "Already initialized for flow."
+		warn "To force reinitialization, use:flow init -f"
+		exit 0
+	fi
+
+	local branch_count
+	local answer
+
+	if ! git config --get user.name >/dev/null 2>&1 || flag force; then
+        git_do config user.name $userName
+    fi        
+
+	if ! git config --get user.email >/dev/null 2>&1 || flag force; then
+        git_do config user.email $userEmail
+    fi
+
+    if [ ! -f "$DOT_GIT_DIR/hooks/commit-msg" ] || flag force; then
+
+        scp -p -P 29418 ${userName}@${host}:hooks/commit-msg .git/hooks/ && chmod u+x .git/hooks/commit-msg
+        if [ $? -ne 0 ]; then
+           echo "oops,there is something wrong"
+           echo "Please manually check why running failed: "    
+           echo "    scp -p -P 29418 ${userName}@${host}:hooks/commit-msg .git/hooks/ && chmod u+x .git/hooks/commit-msg"
+           echo 
+           exit 1
+        fi
+        echo 
+        echo "gerrit code review hooks set succesfull."
+        echo
+    fi    
+
+	# add a master branch if no such branch exists yet
+	local master_branch
+	if gitflow_has_master_configured && ! flag force; then
+		master_branch=$(git config --get gitflow.branch.master)
+	else
+		# Two cases are distinguished:
+		# 1. A fresh git repo (without any branches)
+		#    We will create a new master/develop branch for the user
+		# 2. Some branches do already exist
+		#    We will disallow creation of new master/develop branches and
+		#    rather allow to use existing branches for flow.
+		local default_suggestion=master
+		local should_check_existence=YES
+		branch_count=$(git_local_branches | wc -l)
+		if [ "$branch_count" -eq 0 ]; then
+			echo "No branches exist yet. Base branches must be created now."
+			should_check_existence=NO
+			default_suggestion=$(git config --get gitflow.branch.master || echo master)
+		fi
+		
+		master_branch=${default_suggestion}
+
+        #check master must be exists
+        if [ ! $master_branch = 'master' ];then
+            die "Local branch 'master' does not exist."
+        fi
+
+		# check existence in case of an already existing repo
+		if [ "$should_check_existence" = "YES" ]; then
+			# if no local branch exists and a remote branch of the same
+			# name exists, checkout that branch and use it for master
+			if ! git_local_branch_exists "$master_branch" && \
+				git_remote_branch_exists "origin/$master_branch"; then
+				git_do branch "$master_branch" "origin/$master_branch" >/dev/null 2>&1
+			elif ! git_local_branch_exists "$master_branch"; then
+				die "Local branch '$master_branch' does not exist."
+			fi
+		fi
+
+		# store the name of the master branch
+		git_do config gitflow.branch.master "$master_branch"
+	fi
+
+
+	# Creation of HEAD
+	# ----------------
+	# We create a HEAD now, if it does not exist yet (in a fresh repo). We need
+	# it to be able to create new branches.
+	local created_gitflow_branch=0
+	if ! git rev-parse --quiet --verify HEAD >/dev/null 2>&1; then
+		git_do symbolic-ref HEAD "refs/heads/$master_branch"
+        git_do commit --allow-empty --quiet -m "Initial commit"
+		created_gitflow_branch=1
+	fi
+
+
+
+	# finally, ask the user for naming conventions (branch and tag prefixes)
+	if flag force || \
+	   ! git config --get gitflow.prefix.feature >/dev/null 2>&1 || 
+	   ! git config --get gitflow.prefix.release >/dev/null 2>&1 || 
+	   ! git config --get gitflow.prefix.hotfix >/dev/null 2>&1; then  
+		echo
+		echo "config branch prefixes"
+	fi
+
+	local prefix
+
+	# Feature branches
+	if ! git config --get gitflow.prefix.feature >/dev/null 2>&1 || flag force; then
+        prefix="feature/"
+		git_do config gitflow.prefix.feature "$prefix"
+        echo "  config feature prefix: $prefix"
+	fi
+
+	# Release branches
+	if ! git config --get gitflow.prefix.release >/dev/null 2>&1 || flag force; then
+        prefix="release/"
+		git_do config gitflow.prefix.release "$prefix"
+        echo "  config release prefix: $prefix"
+	fi
+
+
+	# Hotfix branches
+	if ! git config --get gitflow.prefix.hotfix >/dev/null 2>&1 || flag force; then
+		prefix="hotfix/"
+		git_do config gitflow.prefix.hotfix "$prefix"
+        echo "  config hotfix prefix: $prefix"
+	fi
+
+	# assert the flow repo has been correctly initialized
+    if	flow_is_initialized; then
+         echo
+         echo "Summary of actions:"
+         echo "- Git repository '$URL' has initialized"
+         echo "- Your git repository folder: '$FOLDER_NAME' "
+         echo
+    else
+         echo
+         warn "There has something wrong"
+         echo "- Please check it"
+         echo 
+         exit 1
+    fi
+    
+}
+
+cmd_help() {
+	usage
+	exit 0
+}
