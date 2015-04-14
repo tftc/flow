@@ -1,0 +1,6 @@
+export PATH=$PATH:~/bin/
+
+alias ll='ls -l'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ctags="`brew --prefix`/bin/ctags"
