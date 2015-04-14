@@ -34,7 +34,7 @@ export PATH=$PATH:$FLOW_SH
 . ~/.bashrc
 
 EXEC_FILES="flow"
-SCRIPT_FILES="flow-init flow-feature flow-release flow-common flow-shFlags"
+SCRIPT_FILES="gitflow-init gitflow-feature gitflow-release gitflow-common gitflow-shFlags"
 
 
 install -v -d -m 0755 "$FLOW_SH"
