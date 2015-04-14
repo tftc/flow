@@ -22,7 +22,7 @@ if [ -f ~/.bashrc ] || [ -h ~/.bashrc ]; then
 else
     
   echo "\033[0;34mUsing the flow bashrc template file and adding it to ~/.bashrc\033[0m"
-  cp $FLOW_SH/templates/bashrc-template ~/.bashrc
+  cp $FLOW_SH/template/bashrc-template ~/.bashrc
 fi
 
 
@@ -32,4 +32,20 @@ export PATH=$PATH:$FLOW_SH
 " ~/.bashrc
 
 . ~/.bashrc
+
+EXEC_FILES="flow"
+SCRIPT_FILES="flow-init flow-feature flow-release flow-common flow-shFlags"
+
+
+install -v -d -m 0755 "$FLOW_SH"
+
+for exec_file in $EXEC_FILES ; do
+	install -v -m 0755 "$FLOW_SH/$exec_file" "$FLOW_SH"
+done
+
+for script_file in $SCRIPT_FILES ; do
+    install -v -m 0644 "$FLOW_SH/$script_file" "$FLOW_SH"
+done
+
+
 echo "\033[0;32m"'flow...is now installed!'"\033[0m"
