@@ -1,0 +1,543 @@
+#!/bin/sh
+init() {
+  require_git_repo
+  require_gitflow_initialized
+  gitflow_load_settings
+  PREFIX=$(git config --get gitflow.prefix.feature)
+}
+
+usage() {
+	echo "usage: flow feature [list] [-v]"
+	echo "       flow feature start [-F] <name> [<base>]"
+	echo "       flow feature push [<name>] <remoteName>"
+    echo "       flow feature publish <name> <releaseName>"
+	echo "       flow feature track <name> <releaseName>"
+	echo "       flow feature diff [<name|nameprefix>]"
+	echo "       flow feature checkout [<name|nameprefix>]"
+	echo "       flow feature pull [-r] <remote> [<name>]"
+}
+
+cmd_default() {
+	cmd_list "$@"
+}
+
+cmd_list() {
+	DEFINE_boolean verbose false 'verbose (more) output' v
+	parse_args "$@"
+
+	local feature_branches
+	local current_branch
+	local short_names
+	feature_branches=$(echo "$(git_local_branches)" | grep "^$PREFIX")
+	if [ -z "$feature_branches" ]; then
+		warn "No feature branches exist."
+		warn ""
+		warn "You can start a new feature branch:"
+		warn ""
+		warn "    flow feature start <name> [<base>]"
+		warn ""
+		exit 0
+	fi
+	current_branch=$(git branch --no-color | grep '^\* ' | grep -v 'no branch' | sed 's/^* //g')
+	short_names=$(echo "$feature_branches" | sed "s ^$PREFIX  g")
+
+	# determine column width first
+	local width=0
+	local branch
+	for branch in $short_names; do
+		local len=${#branch}
+		width=$(max $width $len)
+	done
+	width=$(($width+3))
+
+	local branch
+	for branch in $short_names; do
+		local fullname=$PREFIX$branch
+		local base=$(git merge-base "$fullname" "$MASTER_BRANCH")
+		local master_sha=$(git rev-parse "$MASTER_BRANCH")
+		local branch_sha=$(git rev-parse "$fullname")
+		if [ "$fullname" = "$current_branch" ]; then
+			printf "* "
+		else
+			printf "  "
+		fi
+		if flag verbose; then
+			printf "%-${width}s" "$branch"
+			if [ "$branch_sha" = "$master_sha" ]; then
+				printf "(no commits yet)"
+			elif [ "$base" = "$branch_sha" ]; then
+				printf "(is behind master, may ff)"
+			elif [ "$base" = "$master_sha" ]; then
+				printf "(based on latest master)"
+			else
+				printf "(may be rebased)"
+			fi
+		else
+			printf "%s" "$branch"
+		fi
+		echo
+	done
+}
+
+cmd_help() {
+	usage
+	exit 0
+}
+
+require_name_arg() {
+	if [ "$NAME" = "" ]; then
+		warn "Missing argument <name>"
+		usage
+		exit 1
+	fi
+}
+
+expand_nameprefix_arg() {
+	require_name_arg
+
+	local expanded_name
+	local exitcode
+	expanded_name=$(gitflow_resolve_nameprefix "$NAME" "$PREFIX")
+	exitcode=$?
+	case $exitcode in
+		0) NAME=$expanded_name
+		   BRANCH=$PREFIX$NAME
+		   ;;
+		*) exit 1 ;;
+	esac
+}
+
+use_current_feature_branch_name() {
+	local current_branch=$(git_current_branch)
+	if startswith "$current_branch" "$PREFIX"; then
+		BRANCH=$current_branch
+		NAME=${BRANCH#$PREFIX}
+        REMOTE_BRANCH=$BRANCH
+        REMOTE_NAME=$NAME    
+	else
+		warn "The current HEAD is no feature branch."
+		warn "Please specify a <name> argument."
+		exit 1
+	fi
+}
+
+require_in_current_branch(){
+	local current_branch=$(git_current_branch)
+    if [ "$current_branch" != "$BRANCH" ]; then
+        default_suggestion='yes'
+        echo 
+        echo "The current branch is $current_branch, not $BRANCH"
+		printf "    Do you want checkout to $BRANCH then contine? [$default_suggestion] "
+		read answer
+		answer=${answer:-$default_suggestion}
+        [ "$answer" != "yes" ] && die 'Please checkout to $BRANCH manually' 		
+        echo "      Branch $current_branch Will auto checkout to $BRANCH "
+        git_do checkout -q $BRANCH 
+    fi
+}
+
+expand_nameprefix_arg_or_current() {
+	if [ "$NAME" != "" ]; then
+		expand_nameprefix_arg
+		require_branch "$PREFIX$NAME"
+        require_remote_branch "$ORIGIN/$REMOTE_BRANCH"
+        require_in_current_branch
+	else
+		use_current_feature_branch_name
+	fi
+}
+
+name_or_current() {
+	if [ -z "$NAME" ]; then
+		use_current_feature_branch_name
+	fi
+}
+
+
+parse_args() {
+	# parse options
+	FLAGS "$@" || exit $?
+	eval set -- "${FLAGS_ARGV}"
+
+	# read arguments into global variables
+	NAME=$1
+	BRANCH=$PREFIX$NAME
+}
+
+parse_push_args(){
+	# parse options
+    parse_args "$@"
+    REMOTE_NAME=$2
+    REMOTE_BRANCH=$PREFIX$REMOTE_NAME
+}
+
+parse_remote_name() {
+	# parse options
+	FLAGS "$@" || exit $?
+	eval set -- "${FLAGS_ARGV}"
+
+	# read arguments into global variables
+	REMOTE=$1
+	NAME=$2
+	BRANCH=$PREFIX$NAME
+}
+
+parse_publish_name(){
+	# parse options
+    parse_args "$@"
+
+    RELEASE_PREFIX=$(git config --get gitflow.prefix.release)
+	# read arguments into global variables
+	RELEASE_NAME=$2
+    RELEASE_BRANCH=$RELEASE_PREFIX$RELEASE_NAME
+}
+
+cmd_start() {
+	DEFINE_boolean fetch false 'fetch from origin before performing local operation' F
+	parse_args "$@"
+    
+    BASE=${2:-$MASTER_BRANCH}
+	require_name_arg
+
+	# sanity checks
+	require_branch_absent "$BRANCH"
+
+	# update the local repo with remote changes, if asked
+	if flag fetch; then
+		git_do fetch -q "$ORIGIN" "$DEVELOP_BRANCH"
+	fi
+
+	# if the origin branch counterpart exists, assert that the local branch
+	# isn't behind it (to avoid unnecessary rebasing)
+    if git_branch_exists "$ORIGIN/$MASTER_BRANCH"; then
+		require_branches_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
+    fi
+
+	# create branch
+	if ! git_do checkout -b "$BRANCH" "$BASE"; then
+		die "Could not create feature branch '$BRANCH'"
+	fi
+
+	echo
+	echo "Summary of actions:"
+	echo "- A new branch '$BRANCH' was created, based on '$BASE'"
+	echo "- You are now on branch '$BRANCH'"
+	echo ""
+	echo "Now, start committing on your feature. When done, use:"
+	echo ""
+	echo "    flow feature finish $NAME"
+	echo
+}
+
+cmd_push() {
+	DEFINE_boolean rebase false "rebase instead of merge" r
+	parse_push_args "$@"
+	expand_nameprefix_arg_or_current
+
+	# sanity checks
+	require_branch "$BRANCH"
+	require_remote_branch "$ORIGIN/$REMOTE_BRANCH"
+
+    git_do checkout -q $BRANCH
+
+	# sanity checks
+	require_clean_working_tree
+
+
+    echo 
+    echo "Start pull $REMOTE_BRANCH into $BRANCH."
+	avoid_accidental_cross_branch_action || die
+
+	# we already have a local branch called like this, so simply pull the
+	# remote changes in
+	if flag rebase; then
+		if ! git_do pull --rebase -q "$ORIGIN" "$REMOTE_BRANCH"; then
+			warn "Pull was aborted. There might be conflicts during rebase or '$REMOTE' might be inaccessible."
+			exit 1
+		fi
+	else
+    	git_do pull -q "$ORIGIN" "$REMOTE_BRANCH" || die "Failed to pull from remote '$REMOTE_BRANCH'."
+	fi
+
+	echo "Pulled $REMOTE_BRANCH's changes into $BRANCH."
+    echo 
+    echo "Start Submit commit to CodeReview"
+    git_do push "$ORIGIN" "$BRANCH:refs/for/$REMOTE_BRANCH"
+
+    exit 0
+
+}
+
+helper_finish_cleanup() {
+	# sanity checks
+	require_branch "$BRANCH"
+    require_remote_branch "$ORIGIN/$REMOTE_BRANCH"    
+
+    git_do push "$ORIGIN" "$BRANCH:refs/for/$REMOTE_BRANCH"
+	
+
+	if [ $? -ne 0 ]; then
+        echo
+        echo "Flow push failed:"
+        echo "- The feature branch "
+    fi    
+	echo
+	echo "Summary of actions:"
+	echo "- The feature branch '$MASTER_BRANCH' was merged into '$BRANCH'"
+	#echo "- Merge conflicts were resolved"		# TODO: Add this line when it's supported
+	echo "- You are now on branch '$DEVELOP_BRANCH'"
+	echo
+
+}
+
+cmd_publish() {
+
+	DEFINE_boolean rebase false "rebase instead of merge" r
+
+	parse_publish_name "$@"
+	expand_nameprefix_arg
+
+	# sanity checks
+    if [ -z $RELEASE_NAME ]; then
+        warn "Missing argument <release_name>"
+        usage
+        exit 1
+    fi    
+	require_clean_working_tree
+    git_do fetch $ORIGIN
+
+	require_branch "$BRANCH"
+	require_remote_branch "$ORIGIN/$RELEASE_BRANCH"
+
+    require_in_current_branch
+
+    git_do checkout -q $BRANCH
+
+
+	avoid_accidental_cross_branch_action || die
+
+    #pull the remote changes into current_branch
+	if ! git_do pull --rebase -q "$ORIGIN" "$BRANCH"; then
+		warn "Pull was aborted. There might be conflicts during rebase or '$ORIGIN' might be inaccessible."
+		exit 1
+	fi
+    
+	if git_local_branch_exists "$RELEASE_BRANCH"; then
+		git_do checkout -q "$RELEASE_BRANCH" || die "Checking out new local branch failed."
+	else
+		# setup the local branch clone for the first time
+		git_do fetch -q "$ORIGIN" "$RELEASE_BRANCH" || die "Fetch failed."     # stores in FETCH_HEAD
+		git_do branch --no-track "$RELEASE_BRANCH" FETCH_HEAD || die "Branch failed."
+		git_do checkout -q "$RELEASE_BRANCH" || die "Checking out new local branch failed."
+		echo "Created local branch $RELEASE_BRANCH based on $ORIGIN's $REMOTE_BRANCH."
+	fi
+        
+	# we already have a local branch called like this, so simply pull the
+	# remote changes in
+	if flag rebase; then
+		if ! git_do pull --rebase -q "$ORIGIN" "$RELEASE_BRANCH"; then
+			warn "Pull was aborted. There might be conflicts during rebase or '$ORIGIN' might be inaccessible."
+			exit 1
+		fi
+	else
+	    git_do pull -q "$ORIGIN" "$RELEASE_BRANCH" || die "Failed to pull from remote '$RELEASE_BRANCH'."
+	fi
+
+	# detect if we're restoring from a merge conflict
+	if [ -f "$DOT_GIT_DIR/.flow/MERGE_BASE" ]; then
+		#
+		# TODO: detect that we're working on the correct branch here!
+		# The user need not necessarily have given the same $NAME twice here
+		# (although he/she should).
+		# 
+
+		# TODO: git_is_clean_working_tree() should provide an alternative
+		# exit code for "unmerged changes in working tree", which we should
+		# actually be testing for here
+		if git_is_clean_working_tree; then
+			FINISH_BASE=$(cat "$DOT_GIT_DIR/.flow/MERGE_BASE")
+
+			# Since the working tree is now clean, either the user did a
+			# succesfull merge manually, or the merge was cancelled.
+			# We detect this using git_is_branch_merged_into()
+			if git_is_branch_merged_into "$BRANCH" "$FINISH_BASE"; then
+				rm -f "$DOT_GIT_DIR/.flow/MERGE_BASE"
+				helper_finish_cleanup
+				exit 0
+			else
+				# If the user cancelled the merge and decided to wait until later,
+				# that's fine. But we have to acknowledge this by removing the
+				# MERGE_BASE file and continuing normal execution of the finish
+				rm -f "$DOT_GIT_DIR/.flow/MERGE_BASE"
+			fi
+		else
+			echo
+			echo "Merge conflicts not resolved yet, use:"
+			echo "    git mergetool"
+			echo "    git commit"
+			echo 
+			echo "You can then complete the finish by running it again:"
+			echo "    flow feature publish $NAME"
+			echo
+			exit 1
+		fi
+	fi
+
+
+	# update local repo with remote changes first, if asked
+	if has "$ORIGIN/$RELEASE_BRANCH" $(git_remote_branches); then
+	    git_do fetch -q "$ORIGIN" "$RELEASE_BRANCH"
+	fi
+
+	if has "$ORIGIN/$BRANCH" $(git_remote_branches); then
+		require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
+	fi
+
+	if has "$ORIGIN/$RELEASE_BRANCH" $(git_remote_branches); then
+		require_branches_equal "$RELEASE_BRANCH" "$ORIGIN/$RELEASE_BRANCH"
+	fi
+
+
+	# merge branch into release 
+	if [ "$(git rev-list -n2 "$RELEASE_BRANCH..$BRANCH" | wc -l)" -eq 1 ]; then
+		git_do merge --ff "$BRANCH"
+	else
+		git_do merge --no-ff "$MASTER_BRANCH"
+	fi
+
+	if [ $? -ne 0 ]; then
+		# oops.. we have a merge conflict!
+		# write the given $DEVELOP_BRANCH to a temporary file (we need it later)
+		mkdir -p "$DOT_GIT_DIR/.flow"
+		echo "$BRANCH" > "$DOT_GIT_DIR/.flow/MERGE_BASE"
+		echo
+		echo "There were merge conflicts. To resolve the merge conflict manually, use:"
+		echo "    git mergetool"
+		echo "    git commit"
+		echo 
+		echo "You can then complete the finish by running it again:"
+		echo "    flow feature finish $NAME"
+		echo
+		exit 1
+	fi
+
+	echo
+	echo "Summary of actions:"
+	echo "- Feature Branch '$BRANCH' has merged into Release Branch '$RELEASE_BRANCH'"
+	echo "- You are now on branch '$RELEASE_BRANCH'"
+	echo "- You can continue use 'flow release push' command for submit to codeReview "
+	echo
+}
+
+cmd_track() {
+	parse_push_args "$@"
+
+    if [ -z "$NAME" -o -z "$REMOTE_NAME" ]; then
+        die "Command 'flow feature track $@' format is error , Please use 'flow feature track <name> <remote_name>'"    
+    fi
+
+	# sanity checks
+	require_clean_working_tree
+	require_branch_absent "$BRANCH"
+	git_do fetch -q "$ORIGIN"
+	require_branch "$ORIGIN/$REMOTE_BRANCH"
+
+	# create tracking branch
+	git_do checkout -b "$BRANCH" "$ORIGIN/$REMOTE_BRANCH"
+
+	echo
+	echo "Summary of actions:"
+	echo "- A new remote tracking branch '$BRANCH' was created"
+	echo "- You are now on branch '$BRANCH'"
+	echo
+}
+
+cmd_diff() {
+	parse_args "$@"
+
+	if [ "$NAME" != "" ]; then
+		expand_nameprefix_arg
+		BASE=$(git merge-base "$MASTER_BRANCH" "$BRANCH")
+		git diff "$BASE..$BRANCH"
+	else
+		if ! git_current_branch | grep -q "^$PREFIX"; then
+			die "Not on a feature branch. Name one explicitly."
+		fi
+
+		BASE=$(git merge-base "$MASTER_BRANCH" HEAD)
+		git diff "$BASE"
+	fi
+}
+
+cmd_checkout() {
+	parse_args "$@"
+
+	if [ "$NAME" != "" ]; then
+		expand_nameprefix_arg
+		git_do checkout "$BRANCH"
+	else
+		die "Name a feature branch explicitly."
+	fi
+}
+
+cmd_co() {
+	# Alias for checkout
+	cmd_checkout "$@"
+}
+
+avoid_accidental_cross_branch_action() {
+	local current_branch=$(git_current_branch)
+	if [ "$BRANCH" != "$current_branch" ]; then
+		warn "Trying to pull from '$BRANCH' while currently on branch '$current_branch'."
+		warn "To avoid unintended merges,flow aborted."
+		return 1
+	fi
+	return 0
+}
+
+cmd_pull() {
+	#DEFINE_string prefix false 'alternative remote feature branch name prefix' p
+	DEFINE_boolean rebase false "pull with rebase" r
+	parse_remote_name "$@"
+
+	if [ -z "$REMOTE" ]; then
+		die "Name a remote explicitly."
+	fi
+	name_or_current
+
+	# To avoid accidentally merging different feature branches into each other,
+	# die if the current feature branch differs from the requested $NAME
+	# argument.
+	local current_branch=$(git_current_branch)
+	if startswith "$current_branch" "$PREFIX"; then
+		# we are on a local feature branch already, so $BRANCH must be equal to
+		# the current branch
+		avoid_accidental_cross_branch_action || die
+	fi
+
+	require_clean_working_tree
+
+	if git_branch_exists "$BRANCH"; then
+		# Again, avoid accidental merges
+		avoid_accidental_cross_branch_action || die
+
+		# we already have a local branch called like this, so simply pull the
+		# remote changes in
+		if flag rebase; then
+			if ! git_do pull --rebase -q "$REMOTE" "$BRANCH"; then
+				warn "Pull was aborted. There might be conflicts during rebase or '$REMOTE' might be inaccessible."
+				exit 1
+			fi
+		else
+			git_do pull -q "$REMOTE" "$BRANCH" || die "Failed to pull from remote '$REMOTE'."
+		fi
+
+		echo "Pulled $REMOTE's changes into $BRANCH."
+	else
+		# setup the local branch clone for the first time
+		git_do fetch -q "$REMOTE" "$BRANCH" || die "Fetch failed."     # stores in FETCH_HEAD
+		git_do branch --no-track "$BRANCH" FETCH_HEAD || die "Branch failed."
+		git_do checkout -q "$BRANCH" || die "Checking out new local branch failed."
+		echo "Created local branch $BRANCH based on $REMOTE's $BRANCH."
+	fi
+}

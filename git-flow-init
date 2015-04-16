@@ -24,7 +24,7 @@ init(){
 
     userName=`echo $URL | awk -F '@' '{print $1}' | awk -F '//' '{print $2}'`;
     host=`echo $URL | awk -F '@' '{print $2}' | awk -F ':' '{print $1}' | awk -F '/' '{print $1}'`;
-    userEmail=$mail
+    userEmail=$MAIL
 
     if [ -z $FOLDER_NAME ]; then
         FOLDER_NAME=`echo $URL | awk -F/ '{print $NF}' | sed -e 's/.git$//'`;
