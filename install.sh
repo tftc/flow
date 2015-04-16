@@ -30,8 +30,6 @@ fi
 echo "\033[0;34mCopying your current PATH and adding it to the end of ~/.bashrc for you.\033[0m"
 
 
-echo "$PATH"
-echo "$FLOW_SH"
 if ! echo "$PATH" | grep -q "$FLOW_SH" ; then 
     sed -i -e "/export PATH=/ c\\
     export PATH=$PATH:$FLOW_SH
@@ -43,19 +41,19 @@ else
 fi  
 . ~/.bashrc
 
-EXEC_FILES="flow"
-SCRIPT_FILES="git-flow-init git-flow-feature git-flow-release gitflow-common gitflow-shFlags"
-
-
-install -v -d -m 0755 "$FLOW_SH"
-
-for exec_file in $EXEC_FILES ; do
-	install -v -m 0755 "$FLOW_SH/$exec_file" "$FLOW_SH"
-done
-
-for script_file in $SCRIPT_FILES ; do
-    install -v -m 0644 "$FLOW_SH/$script_file" "$FLOW_SH"
-done
+#EXEC_FILES="flow"
+#SCRIPT_FILES="git-flow-init git-flow-feature git-flow-release gitflow-common gitflow-shFlags"
+#
+#
+#install -v -d -m 0755 "$FLOW_SH"
+#
+#for exec_file in $EXEC_FILES ; do
+#	install -v -m 0755 "$FLOW_SH/$exec_file" "$FLOW_SH"
+#done
+#
+#for script_file in $SCRIPT_FILES ; do
+#    install -v -m 0644 "$FLOW_SH/$script_file" "$FLOW_SH"
+#done
 
 if [ -f ~/.zshrc ] ; then
     echo "\033[0;34mExisting zsh config... Copying your current PATH and adding it to the end of ~/.zshrc for you.\033[0m"
@@ -65,8 +63,8 @@ if [ -f ~/.zshrc ] ; then
     " ~/.zshrc
     echo "\033[0;32m"'flow...is now installed!'"\033[0m"
     env zsh
-    . ~/.zshrc
+    source ~/.zshrc
+    exit 0
 fi
 
 echo "\033[0;32m"'flow...is now installed!'"\033[0m"
-
