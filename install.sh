@@ -38,6 +38,10 @@ else
     sed -i -e "/export PATH=/ c\\
     export PATH=$PATH
     " ~/.bashrc
+
+    if ! grep -q 'export PATH=' ~/.bashrc ; then
+          echo "export PATH=$PATH">>~/.bashrc;
+    fi
 fi  
 . ~/.bashrc
 
