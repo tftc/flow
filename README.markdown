@@ -5,5 +5,5 @@
 安装方式
 
 ``
-  curl -L -U https://raw.github.com/tftc/flow/master/install.sh | sh
+  curl -L -N https://raw.github.com/tftc/flow/master/install.sh | sh
 ``
