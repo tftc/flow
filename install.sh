@@ -30,6 +30,9 @@ fi
 echo "\033[0;34mCopying your current PATH and adding it to the end of ~/.bashrc for you.\033[0m"
 
 
+if ! grep -q 'export PATH=' ~/.bashrc ; then
+     echo "export PATH=$PATH">>~/.bashrc;
+fi
 #check .flow is contains in path
 if ! echo "$PATH" | grep -q "$FLOW_SH" ; then 
     sed -i -e "/export PATH=/ c\\
@@ -40,9 +43,6 @@ else
     export PATH=$PATH
     " ~/.bashrc
 
-    if ! grep -q 'export PATH=' ~/.bashrc ; then
-          echo "export PATH=$PATH">>~/.bashrc;
-    fi
 fi  
 . ~/.bashrc
 
