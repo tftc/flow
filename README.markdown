@@ -19,6 +19,10 @@ flow 分支上线：分为feature、release、hotfix以及master；
 
 **hotfix**  线上bug修复，每次修复对应一hotfix
 
+![Flow modle](https://raw.githubusercontent.com/tftc/flow/master/template/flow-model.png)
+
+
+
 
 ##形成flow项目
 
