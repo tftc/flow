@@ -32,11 +32,11 @@ flow 分支上线：分为feature、release、hotfix以及master；
 
 `flow feature help` 查看flow feature 命令
 
-> `flow feature start` 开始一个本地项目，远程还没有此分支
-> `flow feature pull [-r] <remote> [<name>]` 更新远程分支，要求本地分支名与远程分支名必须一致
-> `flow feature push [<name>] <remoteName>` 把本地分支代码推送到远程,//TODO（是否需要支持本地创建远程分支?）
-> `flow feature track <name> <remoteName>` 更新远程分支代码到本地并以创建以name命名的新分支
-> `flow feature publish <name> <releaseName>` 把本地分支推送到远程的release分支, 远程分支必须存在
+* `flow feature start` 开始一个本地项目，远程还没有此分支
+* `flow feature pull [-r] <remote> [<name>]` 更新远程分支，要求本地分支名与远程分支名必须一致
+* `flow feature push [<name>] <remoteName>` 把本地分支代码推送到远程,//TODO（是否需要支持本地创建远程分支?）
+* `flow feature track <name> <remoteName>` 更新远程分支代码到本地并以创建以name命名的新分支
+* `flow feature publish <name> <releaseName>` 把本地分支推送到远程的release分支, 远程分支必须存在
 
 
 ###未完待续
