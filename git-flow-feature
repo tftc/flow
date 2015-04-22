@@ -8,13 +8,11 @@ init() {
 
 usage() {
 	echo "usage: flow feature [list] [-v]"
-	echo "       flow feature start [-F] <name> [<base>]"
-	echo "       flow feature push [<name>] <remoteName>"
+	echo "       flow feature start <name> [base]"
+	echo "       flow feature push [remoteName]"
     echo "       flow feature publish <name> <releaseName>"
-	echo "       flow feature track <name> <releaseName>"
+	echo "       flow feature track <remoteName> [name]"
 	echo "       flow feature diff [<name|nameprefix>]"
-	echo "       flow feature checkout [<name|nameprefix>]"
-	echo "       flow feature pull [-r] <remote> [<name>]"
 }
 
 cmd_default() {
@@ -167,19 +165,21 @@ parse_args() {
 parse_push_args(){
 	# parse options
     parse_args "$@"
-    REMOTE_NAME=$2
+    REMOTE_NAME=$NAME
     REMOTE_BRANCH=$PREFIX$REMOTE_NAME
 }
 
-parse_remote_name() {
+parse_track_args() {
 	# parse options
 	FLAGS "$@" || exit $?
 	eval set -- "${FLAGS_ARGV}"
 
+    parse_args "$@"
 	# read arguments into global variables
-	REMOTE=$1
-	NAME=$2
-	BRANCH=$PREFIX$NAME
+	REMOTE_NAME=$1
+    REMOTE_BRANCH=$PREFIX$REMOTE_NAME
+	NAME=${2:-$REMOTE_NAME}
+    BRANCH=$PREFIX$NAME
 }
 
 parse_publish_name(){
@@ -193,7 +193,7 @@ parse_publish_name(){
 }
 
 cmd_start() {
-	DEFINE_boolean fetch false 'fetch from origin before performing local operation' F
+#	DEFINE_boolean fetch false 'fetch from origin before performing local operation' F
 	parse_args "$@"
     
     BASE=${2:-$MASTER_BRANCH}
@@ -203,9 +203,9 @@ cmd_start() {
 	require_branch_absent "$BRANCH"
 
 	# update the local repo with remote changes, if asked
-	if flag fetch; then
-		git_do fetch -q "$ORIGIN" "$DEVELOP_BRANCH"
-	fi
+#	if flag fetch; then
+	git_do fetch -q "$ORIGIN" 
+#	fi
 
 	# if the origin branch counterpart exists, assert that the local branch
 	# isn't behind it (to avoid unnecessary rebasing)
@@ -220,12 +220,12 @@ cmd_start() {
 
 	echo
 	echo "Summary of actions:"
-	echo "- A new branch '$BRANCH' was created, based on '$BASE'"
+	echo "- A new branch '\033[0;33mY$BRANCH'\033[0m was created, based on '$BASE'"
 	echo "- You are now on branch '$BRANCH'"
 	echo ""
 	echo "Now, start committing on your feature. When done, use:"
 	echo ""
-	echo "    flow feature finish $NAME"
+	echo "    flow feature publish $NAME"
 	echo
 }
 
@@ -241,7 +241,7 @@ cmd_push() {
     git_do checkout -q $BRANCH
 
 	# sanity checks
-	require_clean_working_tree
+    require_clean_working_tree
 
 
     echo 
@@ -407,7 +407,7 @@ cmd_publish() {
 
 	if [ $? -ne 0 ]; then
 		# oops.. we have a merge conflict!
-		# write the given $DEVELOP_BRANCH to a temporary file (we need it later)
+		# write the given $BRANCH to a temporary file (we need it later)
 		mkdir -p "$DOT_GIT_DIR/.flow"
 		echo "$BRANCH" > "$DOT_GIT_DIR/.flow/MERGE_BASE"
 		echo
@@ -416,7 +416,7 @@ cmd_publish() {
 		echo "    git commit"
 		echo 
 		echo "You can then complete the finish by running it again:"
-		echo "    flow feature finish $NAME"
+		echo "    flow feature publish <$NAME> <$RELEASE_NAME>"
 		echo
 		exit 1
 	fi
@@ -430,7 +430,7 @@ cmd_publish() {
 }
 
 cmd_track() {
-	parse_push_args "$@"
+	parse_track_args "$@"
 
     if [ -z "$NAME" -o -z "$REMOTE_NAME" ]; then
         die "Command 'flow feature track $@' format is error , Please use 'flow feature track <name> <remote_name>'"    
@@ -498,8 +498,8 @@ avoid_accidental_cross_branch_action() {
 cmd_pull() {
 	#DEFINE_string prefix false 'alternative remote feature branch name prefix' p
 	DEFINE_boolean rebase false "pull with rebase" r
-	parse_remote_name "$@"
-
+	parse_args "$@"
+    REMOTE="origin"
 	if [ -z "$REMOTE" ]; then
 		die "Name a remote explicitly."
 	fi
