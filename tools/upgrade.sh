@@ -6,6 +6,7 @@ git_compare_branches "master" "origin/master"
 
 local status=$?
 if [ $status -gt 0 ]; then
+    echo $status
     require_clean_working_tree
     if git pull --rebase --stat origin master
     then
