@@ -9,11 +9,11 @@ init() {
 
 usage() {
 	echo "usage: flow release list [-v]"
-	echo "       flow release start [-F] <version> [<base>]"
-	echo "       flow release push <version> <remote_version_name>"
+	echo "       flow release start <version> [base]"
+	echo "       flow release push [remoteVersion]"
 	echo "       flow release publish <version>"
-	echo "       flow release track <version> <remote_version_name>"
-	echo "       flow release pull <remote> <remote_version>"
+	echo "       flow release track <remoteVersion> [version]"
+	echo "       flow release pull <remote> <remoteVersion>"
 }
 
 cmd_default() {
@@ -135,6 +135,28 @@ parse_version_remote_args(){
     REMOTE_BRANCH=$PREFIX$REMOTE_VERSION
 }
 
+parse_push_args(){
+	# parse options
+	FLAGS "$@" || exit $?
+	eval set -- "${FLAGS_ARGV}"
+    VERSION=$(echo $(git_current_branch) | awk -F '/' '{print $2}')
+    BRANCH=$PREFIX$VERSION
+    REMOTE_VERSION=$1
+    REMOTE_BRANCH=$PREFIX$REMOTE_VERSION
+}
+
+parse_track_args() {
+	# parse options
+	FLAGS "$@" || exit $?
+	eval set -- "${FLAGS_ARGV}"
+
+	REMOTE_NAME=$1
+	REMOTE_BRANCH=$PREFIX$REMOTE_NAME
+	# read arguments into global variables
+	NAME=${2:-$REMOTE_NAME}
+	BRANCH=$PREFIX$NAME
+}
+
 parse_remote_name() {
 	# parse options
 	FLAGS "$@" || exit $?
@@ -193,10 +215,8 @@ avoid_accidental_cross_branch_action() {
 }
 
 cmd_start() {
-	DEFINE_boolean fetch false "fetch from $ORIGIN before performing finish" F
 	parse_args "$@"
 	BASE=${2:-$MASTER_BRANCH}
-	require_version_arg
 	require_base_is_on_master
 	require_no_existing_release_branches
 
@@ -223,7 +243,7 @@ cmd_start() {
 	echo "- Start committing last-minute fixes in preparing your release"
 	echo "- When done, run:"
 	echo
-	echo "     flow release finish '$VERSION'"
+	echo "     flow release publish '$VERSION'"
 	echo
 }
 
@@ -231,7 +251,7 @@ cmd_start() {
 cmd_build(){
     
 	DEFINE_boolean test false "building on test " t
-	DEFINE_boolean product_test false "it's a product test build" pt
+	DEFINE_boolean productTest false "building on product test" p
 	DEFINE_string message "" "use the given tag message" m
 	parse_args "$@"
 	require_version_arg
@@ -269,13 +289,12 @@ cmd_build(){
     tagname="$tagname-$count"
 	if ! git_tag_exists "$tagname"; then
 		local opts="-a"
-		flag sign && opts="$opts -s"
-		[ "$FLAGS_signingkey" != "" ] && opts="$opts -u '$FLAGS_signingkey'"
 		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
-		[ "$FLAGS_messagefile" != "" ] && opts="$opts -F '$FLAGS_messagefile'"
-        echo $opts
 		eval git_do tag $opts "$tagname" "$BRANCH" || \
 		die "Tagging failed. Please run finish again to retry."
+    else
+
+		die "Tag name: $tagname has exists. Please check."
 	fi
 }
 
@@ -283,7 +302,8 @@ cmd_build(){
 
 cmd_push() {
 
-	parse_version_remote_args "$@"
+	parse_push_args "$@"
+
 	require_version_remote_arg
 
 	# sanity checks
@@ -377,16 +397,15 @@ cmd_publish() {
 	echo "- Latest objects have been fetched from '$ORIGIN'"
 	echo "- Release branch has been merged into '$MASTER_BRANCH'"
 	echo "- The release was tagged '$tagname'"
-	echo "- Release branch has been back-merged into '$DEVELOP_BRANCH'"
 	echo "- '$MASTER_BRANCH' and tags have been pushed to '$ORIGIN'"
 	echo
 }
 
 cmd_track() {
-	parse_version_remote_args "$@"
+	parse_track_args "$@"
 
-    if [ -z "$VERSION" -o -z "$REMOTE_VERSION" ]; then
-        die "Command 'flow release track $@' format is error , Please use 'flow release track <version> <remote_version>'"    
+    if [ -z "$NAME" -o -z "$REMOTE_NAME" ]; then
+        die "Command 'flow release track $@' format is error , Please use 'flow release track <remote_version> [version]'" 
     fi
 
 	# sanity checks
