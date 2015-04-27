@@ -241,9 +241,8 @@ cmd_finish() {
 	local tagname=$VERSION_PREFIX$VERSION
 	if ! git_tag_exists "$tagname"; then
 		local opts="-a"
-		flag sign && opts="$opts -s"
 		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
-		eval git_do tag $opts "$VERSION_PREFIX$VERSION" "$BRANCH" || \
+		eval git_do tag $opts "$PREFIX$VERSION" "$BRANCH" || \
 		die "Tagging failed. Please run finish again to retry."
 	fi
 
@@ -251,7 +250,7 @@ cmd_finish() {
 	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
 		die "Could not push to $MASTER_BRANCH from $ORIGIN."
 	git_do push --tags "$ORIGIN" || \
-				die "Could not push tags to $ORIGIN."
+		die "Could not push tags to $ORIGIN."
 
 	echo
 	echo "Summary of actions:"
