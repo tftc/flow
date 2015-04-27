@@ -24,6 +24,8 @@ usage() {
 }
 
 main() {
+
+
 	if [ $# -lt 1 ]; then
 		usage
 		exit 1
@@ -40,6 +42,10 @@ main() {
 	# use the shFlags project to parse the command line arguments
 	. "$GITFLOW_DIR/gitflow-shFlags"
 	FLAGS_PARENT="git flow"
+
+    #force check update
+    . "$GITFLOW_DIR/tools/upgrade.sh"
+
 
   # allow user to request git action logging
   DEFINE_boolean show_commands false 'show actions taken (git commands)' g
