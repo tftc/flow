@@ -1,6 +1,6 @@
 #!/bin/sh
 init() {
- #do nothing
+    printf '\033[0;34m%s\033[0m\n' "Upgrading flow"
 }
 
 usage() {
@@ -8,7 +8,6 @@ usage() {
 }
 
 cmd_default() {
-    printf '\033[0;34m%s\033[0m\n' "Upgrading flow"
     cd "$GITFLOW_DIR"
     require_clean_working_tree
     if git pull --rebase --stat origin master
