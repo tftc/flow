@@ -19,6 +19,7 @@ usage() {
 	echo "   feature   Manage your feature branches."
 	echo "   release   Manage your release branches."
 	echo "   hotfix    Manage your hotfix branches."
+	echo "   update    Update flow version"
 	echo
 	echo "Try 'flow <subcommand> help' for details."
 }
@@ -42,9 +43,6 @@ main() {
 	# use the shFlags project to parse the command line arguments
 	. "$GITFLOW_DIR/gitflow-shFlags"
 	FLAGS_PARENT="git flow"
-
-    #force check update
-    . "$GITFLOW_DIR/tools/upgrade.sh"
 
 
   # allow user to request git action logging
