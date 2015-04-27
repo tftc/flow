@@ -399,7 +399,7 @@ cmd_publish() {
 	if [ "$(git rev-list -n2 "$RELEASE_BRANCH..$BRANCH" | wc -l)" -eq 1 ]; then
 		git_do merge --ff "$BRANCH"
 	else
-		git_do merge --no-ff "$MASTER_BRANCH"
+		git_do merge --no-ff "$BRANCH"
 	fi
 
 	if [ $? -ne 0 ]; then
