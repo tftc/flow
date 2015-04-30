@@ -30,9 +30,9 @@ flow 分支上线：分为feature、release、hotfix以及master；
 
 ##Feature
 
-`flow feature help` 查看feature命令
+`flow feature help` 查看feature命令，所有feature的分支均是以`feture/`作为前缀
 
-* `flow feature start <name> [base]` 在本地库上以[Base]创建名为`<name>`的分支；
+* `flow feature start <name> [base]` 在本地从base上checkout名为`<name>`的分支；base缺省值为 **master**
 * `flow feature push [remoteName]` 把当前分支推送到远程, remoteName如果不填写，默认为远程分支名与当前分支名一致
 * `flow feature track <remoteName> [name]` 更新远程分支代码到本地并以创建以name命名的新分支，name不填写，默认采用与remoteName一致
 * `flow feature publish <name> <releaseName>` 把本地分支推送到远程的release分支, 远程分支必须存在
@@ -41,8 +41,9 @@ flow 分支上线：分为feature、release、hotfix以及master；
 ##Release
 `flow release help`
 
-* `flow release start <name> [base]`
-* 
+* `flow release start <name> [base]` 在本地从base上checkout名为`<name>`的分支；base缺省值为 **master**
+* `flow feature push [remoteVersion]` 把当前分支推送到远程, remoteVersion如果不填写，默认为远程分支名与当前分支名一致
+* `flow release track <remoteVersion> [version]`
 ###未完待续
 
 

@@ -247,6 +247,27 @@ cmd_start() {
 	echo
 }
 
+generate_tag_version() {
+	local tagname=$VERSION_PREFIX$VERSION
+    #get current tag max count value 
+    local count=$(git_do tag -l "$tagname-*"|awk -F '-' '{print $2}'|sort -r|head -1) 
+    if [ -z "$count" ]; then
+        count=1
+    else
+        count=$[$count+1]
+    fi    
+    tagname="$tagname-$count"
+	if ! git_tag_exists "$tagname"; then
+		local opts="-a"
+		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
+		eval git_do tag $opts "$tagname" "$BRANCH" || \
+		die "Tagging failed. Please run finish again to retry."
+    else
+
+		die "Tag name: $tagname has exists. Please check."
+	fi
+
+}
 
 cmd_build(){
     
@@ -376,16 +397,7 @@ cmd_publish() {
 	# try to tag the release
 	# in case a previous attempt to finish this release branch has failed,
 	# but the tag was set successful, we skip it now
-	local tagname=$VERSION
-	if ! git_tag_exists "$tagname"; then
-		local opts="-a"
-		flag sign && opts="$opts -s"
-		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
-		eval git_do tag $opts "$tagname" "$BRANCH" || \
-		die "Tagging failed. Please run finish again to retry."
-    else
-		die "Publish '$BRANCH' failed. Tag name '$tagname' has exists."
-	fi
+    generate_tag_version
 
 	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
 		die "Could not push to $MASTER_BRANCH from $ORIGIN."
