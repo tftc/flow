@@ -141,7 +141,7 @@ parse_push_args(){
 	eval set -- "${FLAGS_ARGV}"
     VERSION=$(echo $(git_current_branch) | awk -F '/' '{print $2}')
     BRANCH=$PREFIX$VERSION
-    REMOTE_VERSION=$1
+    REMOTE_VERSION=${1:-$VERSION}
     REMOTE_BRANCH=$PREFIX$REMOTE_VERSION
 }
 
@@ -248,25 +248,21 @@ cmd_start() {
 }
 
 generate_tag_version() {
-	local tagname=$VERSION_PREFIX$VERSION
-    #get current tag max count value 
-    local count=$(git_do tag -l "$tagname-*"|awk -F '-' '{print $2}'|sort -r|head -1) 
-    if [ -z "$count" ]; then
-        count=1
-    else
-        count=$[$count+1]
+
+	local tagname=$1
+
+	if git_tag_exists "$tagname"; then
+        #get tag max count  
+        local count=$(git_do tag -l "$tagname-*"|awk -F '-' '{print $2}'|sort -r|head -n 1) 
+        if [ -z "$count" ]; then
+            count=1
+        else
+            count=$[$count+1]
+        fi    
+        tagname="$tagname-$count"
     fi    
-    tagname="$tagname-$count"
-	if ! git_tag_exists "$tagname"; then
-		local opts="-a"
-		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
-		eval git_do tag $opts "$tagname" "$BRANCH" || \
-		die "Tagging failed. Please run finish again to retry."
-    else
 
-		die "Tag name: $tagname has exists. Please check."
-	fi
-
+    echo $tagname
 }
 
 cmd_build(){
@@ -376,7 +372,6 @@ cmd_publish() {
 	require_clean_working_tree
 	require_branch "$BRANCH"
 
-
 	git_do fetch -q "$ORIGIN" "$MASTER_BRANCH" || \
 		  die "Could not fetch $MASTER_BRANCH from $ORIGIN."
 
@@ -397,7 +392,21 @@ cmd_publish() {
 	# try to tag the release
 	# in case a previous attempt to finish this release branch has failed,
 	# but the tag was set successful, we skip it now
-    generate_tag_version
+	git_do fetch -q "$ORIGIN" --tag  || \
+		  die "Could not fetch tag from $ORIGIN."
+
+	local tagname=$VERSION_PREFIX$VERSION
+    
+    tagname="$(generate_tag_version "$tagname")"
+
+	if ! git_tag_exists "$tagname"; then
+#		local opts="-a"
+#		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
+		git_do tag -a "$tagname" "$MASTER_BRANCH" || \
+		die "Tagging failed. Please run finish again to retry."
+    else
+		die "Tag name: $tagname has exists. Please check."
+	fi
 
 	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
 		die "Could not push to $MASTER_BRANCH from $ORIGIN."
