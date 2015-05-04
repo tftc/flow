@@ -141,7 +141,7 @@ parse_push_args(){
 	eval set -- "${FLAGS_ARGV}"
     VERSION=$(echo $(git_current_branch) | awk -F '/' '{print $2}')
     BRANCH=$PREFIX$VERSION
-    REMOTE_VERSION=$1
+    REMOTE_VERSION=${1:-$VERSION}
     REMOTE_BRANCH=$PREFIX$REMOTE_VERSION
 }
 
@@ -267,6 +267,7 @@ generate_tag_version() {
 		die "Tag name: $tagname has exists. Please check."
 	fi
 
+    echo $tagname
 }
 
 cmd_build(){
@@ -397,8 +398,10 @@ cmd_publish() {
 	# try to tag the release
 	# in case a previous attempt to finish this release branch has failed,
 	# but the tag was set successful, we skip it now
-    generate_tag_version
+    echo "1111"
+    local tagname=$(generate_tag_version)
 
+    echo $tagname
 	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
 		die "Could not push to $MASTER_BRANCH from $ORIGIN."
 	git_do push --tags "$ORIGIN" || \
