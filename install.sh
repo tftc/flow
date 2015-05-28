@@ -38,6 +38,7 @@ if ! echo "$PATH" | grep -q "$FLOW_SH" ; then
     sed -i -e "/export PATH=/ c\\
     export PATH=$PATH:$FLOW_SH
     " ~/.bashrc
+fi
 
 . ~/.bashrc
 
