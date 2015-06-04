@@ -254,7 +254,7 @@ generate_tag_version() {
 
 	if git_tag_exists "$tagname"; then
         #get tag max count  
-        local count=$(git_do tag -l "$tagname-*"|awk -F '-build.' '{print $2}'|sort -r|head -n 1) 
+        local count=$(git_do tag -l "$tagname"-*|awk -F '-build.' '{print $2}'|sort -r|head -n 1)
         if [ -z "$count" ]; then
             count=1
         else
@@ -264,6 +264,12 @@ generate_tag_version() {
     fi    
 
     echo $tagname
+}
+
+get_latest_tag() {
+	local version=$1
+    local latest_tag=$(git_do tag -l "$version"* |sort -r|head -n 1)
+    echo "$latest_tag" 
 }
 
 
@@ -456,49 +462,73 @@ require_branches_absolutely_equal() {
 
 cmd_finish() {
 
-    parse_remote_name "@"
+	parse_args "$@"
+
+	require_version_arg
 	
-    #确保上线的分支与选择的分支为一个分支
     require_in_current_branch
 
-    #检测下当前是干净的空间
     require_clean_working_tree
 
-    #确保当前分支与远程分支一致
-	require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
+    #fetch all remote change
+	git_do fetch -q "$ORIGIN" || \
+		  die "Could not fetch from $ORIGIN."
 
-    #更新远程master
-	git_do fetch -q "$ORIGIN" "$MASTER_BRANCH" || \
-		  die "Could not fetch $MASTER_BRANCH from $ORIGIN."
+    #check master must be newest
+	require_branches_absolutely_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
 
+    local result=$?
+    if [ $result -gt 0 ]; then
+        die "falal: $MASTER_BRANCH isn't equal with $ORIGIN/$MASTER_BRANCH"
+    fi
 
+    #check BRANCH must be newest
+	require_branches_absolutely_equal "$BRANCH" "$ORIGIN/$BRANCH"
 
+    local result=$?
 
-	git_do fetch -q "$ORIGIN" --tag  || \
-		  die "Could not fetch tag from $ORIGIN."
+    if [ $result -gt 0 ]; then
+        die "falal: $BRANCH isn't equal with $ORIGIN/$BRANCH"
+    fi
 
-    local BRANCH="tag/$TAG_NAME"
+    #check master branch has merge into branch
+    if ! git_is_branch_merged_into "$MASTER_BRANCH" "$BRANCH"; then
+            die "There were merge conflicts."
+    fi
 
+    local TAG_NAME="$(get_latest_tag "$VERSION")"
+
+    #check tag is exists
 	if ! git_tag_exists "$TAG_NAME"; then
         die "tag name: $TAG_NAME not exists"
     fi
 
-    git checkout -b "$BRANCH" "$TAG_NAME"
+    #check current branch is equal as tag name
+    local result=$(git_do diff --stat "$BRANCH" "$TAG_NAME" | wc -l)
 
-	# try to master merge into branch
-	# in case a previous attempt to finish this release branch has failed,
-	# but the merge into master was successful, we skip it now
-	if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
-		git_do checkout "$MASTER_BRANCH" || \
-		  die "Could not check out $BRANCH."
-		git_do merge --no-ff "$BRANCH" || \
-	      die "There were merge conflicts."
-	fi
+    if [ $result -gt 0 ]; then
+        die "current branch [$BRANCH] is different than tag [$TAG_NAME]"
+    fi
 
+    #merge release into master
+    git_do checkout -q "$MASTER_BRANCH" || \
+        die "Can't checkout to $MASTER_BRANCH"
+    if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
+        git_do merge --no-ff "$BRANCH" || \
+           die "There were merge conflicts."
+    fi
+
+    #push master to origin 
 	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
 		die "Could not push to $MASTER_BRANCH from $ORIGIN."
 
     git_do branch -D $BRANCH 
+
+	echo
+	echo "Summary of actions:"
+	echo "- The release '$BRANCH' has merged into '$MASTER_BRANCH'"
+	echo "- Master '$MASTER_BRANCH' have been pushed to '$ORIGIN'"
+	echo
 
 }
 
