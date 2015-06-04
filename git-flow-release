@@ -14,6 +14,7 @@ usage() {
 	echo "       flow release publish <version>"
 	echo "       flow release track <remoteVersion> [version]"
 	echo "       flow release pull <remote> <remoteVersion>"
+	echo "       flow release finish <remoteVersion>"
 }
 
 cmd_default() {
@@ -253,17 +254,18 @@ generate_tag_version() {
 
 	if git_tag_exists "$tagname"; then
         #get tag max count  
-        local count=$(git_do tag -l "$tagname-*"|awk -F '-' '{print $2}'|sort -r|head -n 1) 
+        local count=$(git_do tag -l "$tagname-*"|awk -F '-build.' '{print $2}'|sort -r|head -n 1) 
         if [ -z "$count" ]; then
             count=1
         else
             count=$[$count+1]
         fi    
-        tagname="$tagname-$count"
+        tagname="$tagname-build.$count"
     fi    
 
     echo $tagname
 }
+
 
 cmd_build(){
     
@@ -356,7 +358,7 @@ cmd_push() {
 	echo
 	echo "Summary of actions:"
 	echo "- Latest objects have been fetched from '$ORIGIN'"
-	echo "- '$MASTER_BRANCH' has been merged into Release branch "
+	echo "- '$MASTER_BRANCH' has been merged into branch $BRANCH"
 	echo "- '$BRANCH' have been pushed to '$ORIGIN $REMOTE_BRANCH'"
 	echo
 }
@@ -364,30 +366,44 @@ cmd_push() {
 cmd_publish() {
 
 	DEFINE_string message "" "use the given tag message" m
-
 	parse_args "$@"
 	require_version_arg
+
+
+    require_in_current_branch
 
 	# sanity checks
 	require_clean_working_tree
 	require_branch "$BRANCH"
 
-	git_do fetch -q "$ORIGIN" "$MASTER_BRANCH" || \
-		  die "Could not fetch $MASTER_BRANCH from $ORIGIN."
+    #fetch all branch
+	git_do fetch -q "$ORIGIN"
 
-	if has "$ORIGIN/$MASTER_BRANCH" $(git_remote_branches); then
-		require_branches_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
-	fi
+    #make sure local master branch is equal as remote branch
+	require_branches_absolutely_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
 
-	# try to merge into master
-	# in case a previous attempt to finish this release branch has failed,
-	# but the merge into master was successful, we skip it now
-	if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
-		git_do checkout "$MASTER_BRANCH" || \
-		  die "Could not check out $MASTER_BRANCH."
-		git_do merge --no-ff "$BRANCH" || \
-	      die "There were merge conflicts."
-	fi
+    local result=$?
+    if [ $result -gt 0 ]; then
+        die "falal: $MASTER_BRANCH isn't equal with $ORIGIN/$MASTER_BRANCH"
+    fi
+
+    #make sure local branch is equal origin branch
+	require_branches_absolutely_equal "$BRANCH" "$ORIGIN/$BRANCH"
+
+    local result=$?
+
+    if [ $result -gt 0 ]; then
+        if [ $result -eq 1 ]; then
+            git_do merge $ORIGIN/$BRANCH
+        else
+            die "falal: $BRANCH isn't equal with $ORIGIN/$BRANCH"
+        fi
+    fi
+
+    #check master branch has merge into branch
+    if ! git_is_branch_merged_into "$MASTER_BRANCH" "$BRANCH"; then
+            die "There were merge conflicts."
+    fi
 
 	# try to tag the release
 	# in case a previous attempt to finish this release branch has failed,
@@ -400,26 +416,90 @@ cmd_publish() {
     tagname="$(generate_tag_version "$tagname")"
 
 	if ! git_tag_exists "$tagname"; then
-#		local opts="-a"
-#		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
-		git_do tag -a "$tagname" "$MASTER_BRANCH" || \
+		git_do tag -a "$tagname" "$BRANCH" || \
 		die "Tagging failed. Please run finish again to retry."
     else
 		die "Tag name: $tagname has exists. Please check."
 	fi
 
-	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
-		die "Could not push to $MASTER_BRANCH from $ORIGIN."
-	git_do push --tags "$ORIGIN" || \
+	git_do push "$ORIGIN" $tagname || \
 		  die "Could not push tags to $ORIGIN."
 
 	echo
 	echo "Summary of actions:"
-	echo "- Latest objects have been fetched from '$ORIGIN'"
-	echo "- Release branch has been merged into '$MASTER_BRANCH'"
 	echo "- The release was tagged '$tagname'"
-	echo "- '$MASTER_BRANCH' and tags have been pushed to '$ORIGIN'"
+	echo "- Tag [$tagname] have been pushed to '$ORIGIN'"
 	echo
+}
+
+require_branches_absolutely_equal() {
+    require_local_branch "$1"
+    require_remote_branch "$2"
+    git_compare_branches "$1" "$2"
+    local status=$?
+    if [ $status -gt 0 ]; then
+        warn "Branches '$1' and '$2' have diverged."
+        if [ $status -eq 1 ]; then
+            warn "And branch '$1' may be fast-forwarded."
+            return 1;
+        elif [ $status -eq 2 ]; then
+            # Warn here, since there is no harm in being ahead
+            warn "And local branch '$1' is ahead of '$2'."
+            return 2;
+        else
+            warn "Branches need merging first."
+            return 3;
+        fi
+     fi
+     return 0;
+}
+
+cmd_finish() {
+
+    parse_remote_name "@"
+	
+    #确保上线的分支与选择的分支为一个分支
+    require_in_current_branch
+
+    #检测下当前是干净的空间
+    require_clean_working_tree
+
+    #确保当前分支与远程分支一致
+	require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
+
+    #更新远程master
+	git_do fetch -q "$ORIGIN" "$MASTER_BRANCH" || \
+		  die "Could not fetch $MASTER_BRANCH from $ORIGIN."
+
+
+
+
+	git_do fetch -q "$ORIGIN" --tag  || \
+		  die "Could not fetch tag from $ORIGIN."
+
+    local BRANCH="tag/$TAG_NAME"
+
+	if ! git_tag_exists "$TAG_NAME"; then
+        die "tag name: $TAG_NAME not exists"
+    fi
+
+    git checkout -b "$BRANCH" "$TAG_NAME"
+
+	# try to master merge into branch
+	# in case a previous attempt to finish this release branch has failed,
+	# but the merge into master was successful, we skip it now
+	if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
+		git_do checkout "$MASTER_BRANCH" || \
+		  die "Could not check out $BRANCH."
+		git_do merge --no-ff "$BRANCH" || \
+	      die "There were merge conflicts."
+	fi
+
+	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
+		die "Could not push to $MASTER_BRANCH from $ORIGIN."
+
+    git_do branch -D $BRANCH 
+
 }
 
 cmd_track() {
@@ -479,7 +559,7 @@ cmd_pull() {
 				exit 1
 			fi
 		else
-			git_do pull -q "$REMOTE" "$BRANCH" || die "Failed to pull from remote '$REMOTE'."
+			git_do pull -q "$remote" "$branch" || die "failed to pull from remote '$remote'."
 		fi
 
 		echo "Pulled $REMOTE's changes into $BRANCH."

@@ -43,7 +43,7 @@ flow 分支上线：分为feature、release、hotfix以及master；
 
 * `flow release start <name> [base]` 在本地从base上checkout名为`<name>`的分支；base缺省值为 **master**
 * `flow feature push [remoteVersion]` 把当前分支推送到远程, remoteVersion如果不填写，默认为远程分支名与当前分支名一致
-* `flow release track <remoteVersion> [version]`
+* `flow release track <remoteVersion> [version]` 把远程分支<remoteversion>下载到本地并创建以version命名的新分支，version默认为<remoteVersion>
 ###未完待续
 
 
