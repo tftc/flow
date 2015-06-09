@@ -8,11 +8,12 @@ init() {
 }
 
 usage() {
-	echo "usage: git flow hotfix [list] [-v]"
-	echo "       git flow hotfix start [-F] <version> [<base>]"
-	echo "       git flow hotfix finish [-m] <version>"
-	echo "       git flow hotfix publish <version>"
-	echo "       git flow hotfix track <version>"
+	echo "usage: flow hotfix [list] [-v]"
+	echo "       flow hotfix start [-F] <version> [<base>]"
+	echo "       flow hotfix finish [-m] <version>"
+	echo "       flow hotfix push [version]"
+	echo "       flow hotfix publish <version>"
+	echo "       flow hotfix track <version>"
 }
 
 cmd_default() {
@@ -155,9 +156,12 @@ cmd_start() {
 	echo
 }
 
+
 cmd_publish() {
 	parse_args "$@"
 	require_version_arg
+
+    require_in_current_branch
 
 	# sanity checks
 	require_clean_working_tree
@@ -165,13 +169,40 @@ cmd_publish() {
 	git_do fetch -q "$ORIGIN"
 	require_branch_absent "$ORIGIN/$BRANCH"
 
-	# create remote branch
-	git_do push "$ORIGIN" "$BRANCH:refs/heads/$BRANCH"
-	git_do fetch -q "$ORIGIN"
+    #make sure master branch is equals origin branch
+	require_branches_absolutely_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH" || \
+        die "falal: $master_branch isn't equal with $origin/$master_branch"
 
-	# configure remote tracking
-	git config "branch.$BRANCH.remote" "$ORIGIN"
-	git config "branch.$BRANCH.merge" "refs/heads/$BRANCH"
+    #make sure local branch is equal origin branch
+	require_branches_absolutely_equal "$BRANCH" "$ORIGIN/$BRANCH"
+    local result=$?
+    if [ $result -gt 0 ]; then
+        if [ $result -eq 1 ]; then
+            git_do merge $ORIGIN/$BRANCH
+        else
+            die "falal: $BRANCH isn't equal with $ORIGIN/$BRANCH"
+        fi
+    fi
+
+    #check master branch has merge into branch
+    if ! git_is_branch_merged_into "$MASTER_BRANCH" "$BRANCH"; then
+        die "There were merge conflicts."
+    fi
+
+	local tagname=$VERSION_PREFIX$VERSION
+    
+    tagname="$(generate_tag_version "$tagname")"
+
+	if ! git_tag_exists "$tagname"; then
+		git_do tag -a "$tagname" "$BRANCH" || \
+		die "Tagging failed. Please run finish again to retry."
+    else
+		die "Tag name: $tagname has exists. Please check."
+	fi
+
+	git_do push "$ORIGIN" $tagname || \
+		  die "Could not push tags to $ORIGIN."
+
 	git_do checkout "$BRANCH"
 
 	echo
@@ -179,6 +210,70 @@ cmd_publish() {
 	echo "- A new remote branch '$BRANCH' was created"
 	echo "- The local branch '$BRANCH' was configured to track the remote branch"
 	echo "- You are now on branch '$BRANCH'"
+	echo
+}
+
+use_current_branch_name() {
+    local current_branch=$(git_current_branch)
+    if startswith "$current_branch" "$PREFIX"; then
+        BRANCH=$current_branch
+        VERSION=${BRANCH#$PREFIX}
+    else
+        warn "The current HEAD is no $PREFIX branch."
+        warn "Please specify a <name> argument."
+        exit 1
+    fi
+}
+
+name_or_current() {
+	if [ -z "$VERSION" ]; then
+		use_current_branch_name
+	fi
+}
+
+cmd_push() {
+
+    name_or_current || die
+
+    REMOTE_VERSION=${1:-$VERSION}
+    REMOTE_BRANCH=$PREFIX$REMOTE_VERSION
+
+	require_version_arg
+
+	# sanity checks
+	require_branch "$BRANCH"
+    require_remote_branch "$ORIGIN/$REMOTE_BRANCH"
+
+	require_clean_working_tree
+	
+	git_do fetch -q "$ORIGIN" "$MASTER_BRANCH" || \
+        die "Could not fetch $MASTER_BRANCH from $ORIGIN."
+
+	if has "$ORIGIN/$MASTER_BRANCH" $(git_remote_branches); then
+		require_branches_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
+	fi
+
+	# try to merge master into current branch
+	# in case a previous attempt to finish this release branch has failed,
+	# but the merge into master was successful, we skip it now
+    if ! git_is_branch_merged_into "$MASTER_BRANCH" "$BRANCH"; then
+        git_do merge --no-ff "$MASTER_BRANCH" || \
+            die "There were merge conflicts."
+    fi
+
+    #try to pull remote changes 
+	git_do pull -q "$ORIGIN" "$REMOTE_BRANCH" || die "Failed to pull from remote '$REMOTE_BRANCH'."
+    git_do push "$ORIGIN" "$BRANCH":"refs/for/$REMOTE_BRANCH" 
+
+    if [ $? -ne 0 ]; then
+       die "git push codeReview failed, Please check it." 
+    fi
+
+	echo
+	echo "Summary of actions:"
+	echo "- Latest objects have been fetched from '$ORIGIN'"
+	echo "- '$MASTER_BRANCH' has been merged into Release branch '$BRANCH' "
+	echo "- '$BRANCH' have been pushed to '$ORIGIN $REMOTE_BRANCH'"
 	echo
 }
 
