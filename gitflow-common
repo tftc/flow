@@ -273,3 +273,55 @@ require_branches_equal() {
 		fi
 	fi
 }
+
+require_branches_absolutely_equal() {
+    require_local_branch "$1"
+    require_remote_branch "$2"
+    git_compare_branches "$1" "$2"
+    local status=$?
+    if [ $status -gt 0 ]; then
+        warn "Branches '$1' and '$2' have diverged."
+        if [ $status -eq 1 ]; then
+            warn "And branch '$1' may be fast-forwarded."
+            return 1;
+        elif [ $status -eq 2 ]; then
+            # Warn here, since there is no harm in being ahead
+            warn "And local branch '$1' is ahead of '$2'."
+            return 2;
+        else
+            warn "Branches need merging first."
+            return 3;
+        fi
+     fi
+     return 0;
+}
+
+generate_tag_version() {
+	local tagname=$1
+	if git_tag_exists "$tagname"; then
+        #get tag max count  
+        local count=$(git_do tag -l "$tagname"-*|awk -F '-build.' '{print $2}'|sort -r|head -n 1)
+        if [ -z "$count" ]; then
+            count=1
+        else
+            count=$[$count+1]
+        fi    
+        tagname="$tagname-build.$count"
+    fi    
+    echo $tagname
+}
+
+require_in_current_branch(){
+	local current_branch=$(git_current_branch)
+    if [ "$current_branch" != "$BRANCH" ]; then
+        default_suggestion='yes'
+        echo 
+        echo "The current branch is $current_branch, not $BRANCH"
+		printf "    Do you want checkout to $BRANCH then contine? [$default_suggestion] "
+		read answer
+		answer=${answer:-$default_suggestion}
+        [ "$answer" != "yes" ] && die 'Please checkout to $BRANCH manually' 		
+        echo "      Branch $current_branch Will auto checkout to $BRANCH "
+        git_do checkout -q $BRANCH 
+    fi
+}

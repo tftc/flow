@@ -167,7 +167,6 @@ cmd_publish() {
 	require_clean_working_tree
 	require_branch "$BRANCH"
 	git_do fetch -q "$ORIGIN"
-	require_branch_absent "$ORIGIN/$BRANCH"
 
     #make sure master branch is equals origin branch
 	require_branches_absolutely_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH" || \
@@ -203,6 +202,13 @@ cmd_publish() {
 	git_do push "$ORIGIN" $tagname || \
 		  die "Could not push tags to $ORIGIN."
 
+	# create remote branch
+	git_do push "$ORIGIN" "$BRANCH:refs/heads/$BRANCH"
+	git_do fetch -q "$ORIGIN"
+
+	# configure remote tracking
+	git config "branch.$BRANCH.remote" "$ORIGIN"
+	git config "branch.$BRANCH.merge" "refs/heads/$BRANCH"
 	git_do checkout "$BRANCH"
 
 	echo
