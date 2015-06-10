@@ -10,7 +10,7 @@ init() {
 usage() {
 	echo "usage: flow hotfix [list] [-v]"
 	echo "       flow hotfix start [-F] <version> [<base>]"
-	echo "       flow hotfix finish [-m] <version>"
+	echo "       flow hotfix finish <version>"
 	echo "       flow hotfix push [version]"
 	echo "       flow hotfix publish <version>"
 	echo "       flow hotfix track <version>"
@@ -177,7 +177,7 @@ cmd_publish() {
     local result=$?
     if [ $result -gt 0 ]; then
         if [ $result -eq 1 ]; then
-            git_do merge $ORIGIN/$BRANCH
+            git_do merge --no-ff $ORIGIN/$BRANCH
         else
             die "falal: $BRANCH isn't equal with $ORIGIN/$BRANCH"
         fi
@@ -304,61 +304,73 @@ cmd_track() {
 }
 
 cmd_finish() {
-	DEFINE_boolean fetch false "fetch from $ORIGIN before performing finish" F
-	DEFINE_string message "" "use the given tag message" m
-	DEFINE_boolean push false "push to $ORIGIN after performing finish" p
+
 	parse_args "$@"
+
 	require_version_arg
+	
+    require_in_current_branch
 
+    require_clean_working_tree
 
-	# sanity checks
-	require_branch "$BRANCH"
-	require_clean_working_tree
+    #fetch all remote change
+	git_do fetch -q "$ORIGIN" || \
+		  die "Could not fetch from $ORIGIN."
 
-	git_do fetch -q "$ORIGIN" "$MASTER_BRANCH" || \
-        die "Could not fetch $MASTER_BRANCH from $ORIGIN."
+    #check master must be newest
+	require_branches_absolutely_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
 
-	if has "$ORIGIN/$MASTER_BRANCH" $(git_remote_branches); then
-		require_branches_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
-	fi
-	if has "$ORIGIN/$BRANCH" $(git_remote_branches); then
-		require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
-	fi
+    local result=$?
+    if [ $result -gt 0 ]; then
+        die "falal: $MASTER_BRANCH isn't equal with $ORIGIN/$MASTER_BRANCH"
+    fi
 
-	# try to merge into master
-	# in case a previous attempt to finish this release branch has failed,
-	# but the merge into master was successful, we skip it now
-	if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
-		git_do checkout "$MASTER_BRANCH" || \
-		  die "Could not check out $MASTER_BRANCH."
-		git_do merge --no-ff "$BRANCH" || \
-		  die "There were merge conflicts."
-		  # TODO: What do we do now?
-	fi
+    #check BRANCH must be newest
+	require_branches_absolutely_equal "$BRANCH" "$ORIGIN/$BRANCH"
 
-	# try to tag the release
-	# in case a previous attempt to finish this release branch has failed,
-	# but the tag was set successful, we skip it now
-	local tagname=$VERSION_PREFIX$VERSION
-	if ! git_tag_exists "$tagname"; then
-		local opts="-a"
-		[ "$FLAGS_message" != "" ] && opts="$opts -m '$FLAGS_message'"
-		eval git_do tag $opts "$PREFIX$VERSION" "$BRANCH" || \
-		die "Tagging failed. Please run finish again to retry."
-	fi
+    local result=$?
 
-    #push code
+    if [ $result -gt 0 ]; then
+        die "falal: $BRANCH isn't equal with $ORIGIN/$BRANCH"
+    fi
+
+    #check master branch has merge into branch
+    if ! git_is_branch_merged_into "$MASTER_BRANCH" "$BRANCH"; then
+            die "There were merge conflicts."
+    fi
+
+    local TAG_NAME="$(get_latest_tag "$VERSION")"
+
+    #check tag is exists
+	if ! git_tag_exists "$TAG_NAME"; then
+        die "tag name: $TAG_NAME not exists"
+    fi
+
+    #check current branch is equal as tag name
+    local result=$(git_do diff --stat "$BRANCH" "$TAG_NAME" | wc -l)
+
+    if [ $result -gt 0 ]; then
+        die "current branch [$BRANCH] is different than tag [$TAG_NAME]"
+    fi
+
+    #merge release into master
+    git_do checkout -q "$MASTER_BRANCH" || \
+        die "Can't checkout to $MASTER_BRANCH"
+    if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
+        git_do merge --no-ff "$BRANCH" || \
+           die "There were merge conflicts."
+    fi
+
+    #push master to origin 
 	git_do push "$ORIGIN" "$MASTER_BRANCH" || \
 		die "Could not push to $MASTER_BRANCH from $ORIGIN."
-	git_do push --tags "$ORIGIN" || \
-		die "Could not push tags to $ORIGIN."
+
+    git_do branch -D $BRANCH
 
 	echo
 	echo "Summary of actions:"
-	echo "- Latest objects have been fetched from '$ORIGIN'"
-	echo "- Hotfix branch has been merged into '$MASTER_BRANCH'"
-	echo "- The hotfix was tagged '$VERSION_PREFIX$VERSION'"
-	echo "- Hotfix branch '$BRANCH' is still available"
-	echo "- '$MASTER_BRANCH' and tags have been pushed to '$ORIGIN'"
+	echo "- The release '$BRANCH' has merged into '$MASTER_BRANCH'"
+	echo "- Master '$MASTER_BRANCH' have been pushed to '$ORIGIN'"
 	echo
+
 }

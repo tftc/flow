@@ -371,10 +371,8 @@ cmd_push() {
 
 cmd_publish() {
 
-	DEFINE_string message "" "use the given tag message" m
 	parse_args "$@"
 	require_version_arg
-
 
     require_in_current_branch
 
@@ -412,7 +410,6 @@ cmd_publish() {
     fi
 
 	# try to tag the release
-	# in case a previous attempt to finish this release branch has failed,
 	# but the tag was set successful, we skip it now
 	git_do fetch -q "$ORIGIN" --tag  || \
 		  die "Could not fetch tag from $ORIGIN."

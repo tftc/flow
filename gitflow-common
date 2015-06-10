@@ -325,3 +325,9 @@ require_in_current_branch(){
         git_do checkout -q $BRANCH 
     fi
 }
+
+get_latest_tag() {
+	local version=$1
+    local latest_tag=$(git_do tag -l "$version"* |sort -r|head -n 1)
+    echo "$latest_tag"
+}
