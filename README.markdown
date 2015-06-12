@@ -17,26 +17,25 @@ flow用于git的分支流程管理；以下几个概念：
 规范采用与[**语义化版本**](http://semver.org/lang/zh-CN/)保持一致。
 
 版本号： v主版本号.次版本号.修订号 
-主版本号：对于模块来说是否做了不兼容API的修复，应用来说是否做了架构变更；
-次版本号：功能性新增，对应每次release的发布，次版本号API需要保持向下兼容性;
-修订号：缺陷功能修复，修订号最低为0；
+
+* 主版本号：对于模块来说是否做了不兼容API的修复，应用来说是否做了架构变更；
+* 次版本号：功能性新增，对应每次release的发布，次版本号API需要保持向下兼容性;
+* 修订号：缺陷功能修复，修订号最低为0；
 
 
 ###master
 
-  线上运行环境的代码版本；
+线上运行环境的代码版本；
   
 ###feature
 
-  为啥需要feature？在项目实际开发协作过程中，存在以下几种情况
-  1. 很多feature是并行开发的；
-  2. 同时开发的feature不意味着上线时间是一起的，一些feature先上线，一些feature延迟上线，一些紧急feature加入上线；
-  3. 可能存在超长feature情况，这个分支可能会存在很长时间
-  所以需要有feature分支，某个任务或者故事点用此分支；那么就存在着feature下会有多个分支的情况；
+为啥需要feature？在项目实际开发协作过程中，存在以下几种情况
+1. 很多feature是并行开发的；
+2. 同时开发的feature不意味着上线时间是一起的，一些feature先上线，一些feature延迟上线，一些紧急feature加入上线；
+3. 可能存在超长feature情况，这个分支可能会存在很长时间
+所以需要有feature分支，某个任务或者故事点用此分支；那么就存在着feature下会有多个分支的情况；
   
-  分支命名：**feature/分支名** 前缀为feature，分支名为当前任务命名；具体名称视情况而定，名称可以为story，也可以为task；
-  
-  feature不允许直接发布，发布必须按照release方式。
+分支命名：**feature/分支名** 前缀为feature，分支名为当前任务命名；具体名称视情况而定，名称可以为story，也可以为task；feature不允许直接发布，发布必须按照release方式。
 
 ###release
 
@@ -70,7 +69,7 @@ flow用于git的分支流程管理；以下几个概念：
 ##feature
 
 * `flow feature help` 帮助信息
-* `flow feature start <name> [base]` 从`[base]`checkout `<name>`分支；`[base]` 默认为 **master**
+* `flow feature start <name> [base]` 从`[base]`checkout `<name>`分支；`[base]` 默认为 **master**；注意：使用codeReview时候不使用
 * `flow feature push [remoteName]` 把当前分支push到远程, `[remoteName]`默认取当前分支名；
 * `flow feature track <remoteName> [name]` 将远程`<remoteName>`分支checkout到本地，`[name]`默认为`<remoteName>`
 * `flow feature publish <name> <releaseName>` 将`<name>`合并到本次待发布`<releaseName>`中
