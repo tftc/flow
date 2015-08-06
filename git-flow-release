@@ -248,30 +248,6 @@ cmd_start() {
 	echo
 }
 
-generate_tag_version() {
-
-	local tagname=$1
-
-	if git_tag_exists "$tagname"; then
-        #get tag max count  
-        local count=$(git_do tag -l "$tagname"-*|awk -F '-build.' '{print $2}'|sort -r|head -n 1)
-        if [ -z "$count" ]; then
-            count=1
-        else
-            count=$[$count+1]
-        fi    
-        tagname="$tagname-build.$count"
-    fi    
-
-    echo $tagname
-}
-
-get_latest_tag() {
-	local version=$1
-    local latest_tag=$(git_do tag -l "$version"* |sort -r|head -n 1)
-    echo "$latest_tag" 
-}
-
 
 cmd_build(){
     
@@ -417,6 +393,7 @@ cmd_publish() {
 	local tagname=$VERSION_PREFIX$VERSION
     
     tagname="$(generate_tag_version "$tagname")"
+    require_tag_validation "$tagname"
 
 	if ! git_tag_exists "$tagname"; then
 		git_do tag -a "$tagname" "$BRANCH" || \

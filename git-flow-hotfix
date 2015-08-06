@@ -191,6 +191,7 @@ cmd_publish() {
 	local tagname=$VERSION_PREFIX$VERSION
     
     tagname="$(generate_tag_version "$tagname")"
+    require_tag_validation "$tagname"
 
 	if ! git_tag_exists "$tagname"; then
 		git_do tag -a "$tagname" "$BRANCH" || \

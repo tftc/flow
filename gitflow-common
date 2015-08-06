@@ -293,7 +293,7 @@ require_branches_absolutely_equal() {
             return 3;
         fi
      fi
-     return 0;
+     return 0
 }
 
 generate_tag_version() {
@@ -307,8 +307,18 @@ generate_tag_version() {
             count=$[$count+1]
         fi    
         tagname="$tagname-build.$count"
-    fi    
+    fi
     echo $tagname
+}
+
+require_tag_validation() {
+	local tagname=$1
+    local latest_tag="$(get_latest_tag)"
+    local latest_tag_num=$(echo $latest_tag|awk -F '-' '{print $1}'|sed 's/v//g;s/\.//g'|awk '{printf("%d",$0)}')
+    local tagname_num=$(echo $tagname|awk -F '-' '{print $1}'|sed 's/v//g;s/\.//g'|awk '{printf("%d",$0)}')
+    if [ $latest_tag_num -gt $tagname_num ]; then  
+       die "current tagName is '$tagname', git latestTagName is '$latest_tag', Please check it!"
+    fi
 }
 
 require_in_current_branch(){
@@ -327,7 +337,9 @@ require_in_current_branch(){
 }
 
 get_latest_tag() {
-	local version=$1
-    local latest_tag=$(git_do tag -l "$version"* |sort -r|head -n 1)
-    echo "$latest_tag"
+    if [ -n "$1" ]; then
+        echo $(git_do tag -l "$1"* |sort -r|head -n 1)
+    else
+        echo "$(git_do describe --tags)" 
+    fi
 }
