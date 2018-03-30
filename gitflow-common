@@ -313,11 +313,25 @@ generate_tag_version() {
 
 require_tag_validation() {
 	local tagname=$1
+	local tagname_=$1
     local latest_tag="$(get_latest_tag)"
-    local latest_tag_num=$(echo $latest_tag|awk -F '-' '{print $1}'|sed 's/v//g;s/\.//g'|awk '{printf("%d",$0)}')
-    local tagname_num=$(echo $tagname|awk -F '-' '{print $1}'|sed 's/v//g;s/\.//g'|awk '{printf("%d",$0)}')
-    if [ $latest_tag_num -gt $tagname_num ]; then  
-       die "current tagName is '$tagname', git latestTagName is '$latest_tag', Please check it!"
+    local latest_tag_="$(get_latest_tag)"
+    local latest_tag_version_arr=(`echo $latest_tag|sed 's/v//g;s/\-build//g;s/\./ /g'|awk '{printf($0)}'`)
+    local tagname_version_arr=(`echo $tagname|sed 's/v//g;s/\-build//g;s/\./ /g'|awk '{printf($0)}'`)
+    echo "latest_tag_version: '${latest_tag_version_arr[@]}', tagname_version; '${tagname_version_arr[@]}'"
+    if [ ${latest_tag_version_arr[0]} -gt ${tagname_version_arr[0]} ]; then
+       die "current tagName is '$tagname_', git latestTagName is '$latest_tag_', Please check it!"
+    fi
+    if [ ${latest_tag_version_arr[1]} -gt ${tagname_version_arr[1]} ]; then
+       die "current tagName is '$tagname_', git latestTagName is '$latest_tag_', Please check it!"
+    fi
+    if [ ${latest_tag_version_arr[2]} -gt ${tagname_version_arr[2]} ]; then
+       die "current tagName is '$tagname_', git latestTagName is '$latest_tag_', Please check it!"
+    fi
+    if [[ ${tagname_version_arr[3]} && $latest_tag_version_arr[3] ]]; then
+       if [ ${latest_tag_version_arr[3]} -gt ${tagname_version_arr[3]} ]; then
+          die "current tagName is '$tagname_', git latestTagName is '$latest_tag_', Please check it!"
+       fi
     fi
 }
 
