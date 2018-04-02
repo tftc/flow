@@ -300,7 +300,7 @@ generate_tag_version() {
 	local tagname=$1
 	if git_tag_exists "$tagname"; then
         #get tag max count  
-        local count=$(git_do tag -l "$tagname"-*|awk -F '-build.' '{print $2}'|sort -r|head -n 1)
+        local count=$(git_do tag -l "$tagname"-*|awk -F '-build.' '{print $2}'|sort -nr|head -n 1)
         if [ -z "$count" ]; then
             count=1
         else
@@ -316,9 +316,10 @@ require_tag_validation() {
 	local tagname_=$1
     local latest_tag="$(get_latest_tag)"
     local latest_tag_="$(get_latest_tag)"
-    local latest_tag_version_arr=(`echo $latest_tag|sed 's/v//g;s/\-build//g;s/\./ /g'|awk '{printf($0)}'`)
+    echo "latest_tag = '$latest_tag_' tagname = '$tagname_'"
+
+    local latest_tag_version_arr=(`echo $latest_tag|sed 's/v//g;s/\-build//g;s/\./ /g'|awk -F '-' '{printf($1)}'|awk '{printf($0)}'`)
     local tagname_version_arr=(`echo $tagname|sed 's/v//g;s/\-build//g;s/\./ /g'|awk '{printf($0)}'`)
-    echo "latest_tag_version: '${latest_tag_version_arr[@]}', tagname_version; '${tagname_version_arr[@]}'"
     if [ ${latest_tag_version_arr[0]} -gt ${tagname_version_arr[0]} ]; then
        die "current tagName is '$tagname_', git latestTagName is '$latest_tag_', Please check it!"
     fi
