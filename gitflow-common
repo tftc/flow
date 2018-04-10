@@ -353,7 +353,12 @@ require_in_current_branch(){
 
 get_latest_tag() {
     if [ -n "$1" ]; then
-        echo $(git_do tag -l "$1"* |sort -r|head -n 1)
+        local count=$(git_do tag -l "$1"*|awk -F '-build.' '{print $2}'|sort -nr|head -n 1)
+        if [ -z "$count" ]; then
+            echo $1
+        else
+            echo "$1-build.$count"
+        fi
     else
         echo "$(git_do describe --tags)" 
     fi
